@@ -8,4 +8,7 @@ type LotteryService interface {
 
 	// GetLotteryInstance 获取活动详情，用于前端渲染 [cite: 167]
 	GetLotteryInstance(ctx context.Context, instanceID string) (*LotteryInstanceResponse, error)
+
+	DeductStock(ctx context.Context, req *StockActionRequest) error
+	IncreaseStock(ctx context.Context, req *StockActionRequest) error
 }

@@ -13,10 +13,10 @@ type LotteryRepository interface {
 	IncreaseStock(ctx context.Context, instanceId string, prizeId string, num int) (bool, error)
 }
 
-type Locker interface {
-	Lock(userID int64, instanceID string) bool
-	UnLock(userID int64, instanceID string)
-}
+//type Locker interface {
+//	Lock(userID int64, instanceID string) bool
+//	UnLock(userID int64, instanceID string)
+//}
 
 // WinRecordRepository 定义中奖记录的数据库操作
 type WinRecordRepository interface {

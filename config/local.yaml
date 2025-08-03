@@ -1,0 +1,19 @@
+# config.local.yaml
+infra:
+  kafka:
+    brokers: "localhost:9092"
+  redis:
+    addrs: "localhost:6379"
+  jaeger:
+    endpoint: "http://localhost:14268/api/traces"
+  zookeeper:
+    addrs: "localhost:2181"
+  mysql:
+    addrs: "root:root@tcp(localhost:3306)/sirius?charset=utf8mb4&parseTime=True&loc=Local"
+
+app:
+  orderService:
+    processingTimeoutSeconds: 30
+    paymentTimeoutSeconds: 600
+  featureFlags:
+    enableVipPromotion: true

@@ -6,6 +6,7 @@ import (
 	"github.com/wangyingjie930/nexus-pkg/transactional"
 	"gorm.io/gorm"
 	"sirius-lottery/internal/domain"
+	"sirius-lottery/internal/infrastructure/repository"
 )
 
 type gormUnitOfWork struct {
@@ -51,11 +52,11 @@ type gormRepoProvider struct {
 }
 
 func (g *gormRepoProvider) LotteryRepository() domain.LotteryRepository {
-	return nil
+	return repository.NewGormLotteryRepository(g.db, nil)
 }
 
 func (g *gormRepoProvider) WinRecordRepository() domain.WinRecordRepository {
-	return nil
+	return repository.NewGormWinRecordRepository(g.db)
 }
 
 func (g *gormRepoProvider) TransactionalStore() transactional.Store {

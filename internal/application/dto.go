@@ -38,3 +38,22 @@ type LotteryInstanceResponse struct {
 		} `json:"prizes"`
 	} `json:"pools"`
 }
+
+type StockActionRequest struct {
+	InstanceID string `json:"instance_id"`
+	PrizeID    string `json:"prize_id"`
+	Num        int    `json:"num"`
+}
+
+type CreateWinRecordRequest struct {
+	OrderID    string `json:"order_id"`
+	PrizeID    string `json:"prize_id"`
+	InstanceID string `json:"instance_id"`
+	RequestID  string `json:"request_id"`
+	UserID     int64  `json:"user_id"`
+}
+
+type AssetRequest struct {
+	Cost   int   `json:"cost"`
+	UserId int64 `json:"user_id"`
+}
