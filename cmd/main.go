@@ -15,6 +15,7 @@ import (
 	redis2 "sirius-lottery/internal/infrastructure/redis"
 	"sirius-lottery/internal/infrastructure/repository"
 	"sirius-lottery/internal/interfaces"
+	"sirius-lottery/internal/pkg/eventbus"
 )
 
 const (
@@ -67,14 +68,19 @@ func main() {
 			// 4. **创建应用服务实例 (应用层)**
 			// 将仓储接口注入到应用服务中
 			//tracer := otel.Tracer(serviceName)
-			lotterySrv := application.NewLotteryServiceImpl(lrp, wrp, strategy, uow)
+			eventBus := eventbus.NewMemoryEventBus()
+			lotterySrv := application.NewLotteryServiceImpl(lrp, wrp, strategy, uow, eventBus)
 
 			// 5. **创建HTTP处理器 (接口层)**
 			// 将应用服务注入到HTTP处理器中
-			handler := interfaces.NewHttpHandler(lotterySrv)
+			httpHandler := interfaces.NewHttpHandler(lotterySrv)
 
-			// 6. **启动服务并注册路由**
-			handler.RegisterRoutes(appCtx.Mux)
+			// 6. **创建事件处理器并注册**
+			eventHandler := interfaces.NewLotteryEventHandler(lotterySrv)
+			eventHandler.Register(eventBus)
+
+			// 7. **启动服务并注册路由**
+			httpHandler.RegisterRoutes(appCtx.Mux)
 
 			logger.Logger.Printf("✅ Promotion service routes registered.")
 		},
