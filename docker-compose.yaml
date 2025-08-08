@@ -1,13 +1,2 @@
 version: '3'
 services:
-  dtm:
-    image: yedf/dtm
-    environment:
-      STORE_DRIVER: mysql
-      STORE_HOST: host.docker.internal
-      STORE_USER: root
-      STORE_PASSWORD: 'root'
-      STORE_PORT: 3306
-    ports:
-      - '36789:36789'
-      - '36790:36790'

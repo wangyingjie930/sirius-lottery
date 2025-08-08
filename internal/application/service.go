@@ -1,6 +1,9 @@
 package application
 
-import "context"
+import (
+	"context"
+	"sirius-lottery/internal/pkg/eventbus"
+)
 
 type LotteryService interface {
 	// Draw 是核心抽奖接口
@@ -11,4 +14,8 @@ type LotteryService interface {
 
 	DeductStock(ctx context.Context, req *StockActionRequest) error
 	IncreaseStock(ctx context.Context, req *StockActionRequest) error
+}
+
+type EventBus interface {
+	Publish(ctx context.Context, event eventbus.Event) error
 }
