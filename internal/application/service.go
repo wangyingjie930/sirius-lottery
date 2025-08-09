@@ -1,6 +1,8 @@
 package application
 
-import "context"
+import (
+	"context"
+)
 
 type LotteryService interface {
 	// Draw 是核心抽奖接口

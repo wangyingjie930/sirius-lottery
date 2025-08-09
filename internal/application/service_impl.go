@@ -6,14 +6,18 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-resty/resty/v2"
-	"github.com/google/uuid"
-	"github.com/wangyingjie930/nexus-pkg/transactional"
 	"sirius-lottery/internal/domain"
 	"sirius-lottery/internal/domain/entity"
 	"sirius-lottery/internal/domain/strategy"
+	"sirius-lottery/internal/infrastructure/contract/eventbus"
+
+	"github.com/google/uuid"
+	"github.com/wangyingjie930/nexus-pkg/logger"
+	"github.com/wangyingjie930/nexus-pkg/transactional"
+
+	"time"
 
 	"github.com/dtm-labs/client/dtmcli"
-	"time"
 )
 
 type lotteryServiceImpl struct {
@@ -21,10 +25,15 @@ type lotteryServiceImpl struct {
 	winRecordRepo domain.WinRecordRepository
 	strategyFact  *strategy.LotteryStrategyFactory
 	uow           domain.UnitOfWork
+	eventbus      eventbus.Producer
 }
 
-func NewLotteryServiceImpl(repo domain.LotteryRepository, winRecordRepo domain.WinRecordRepository, strategyFact *strategy.LotteryStrategyFactory, uow domain.UnitOfWork) *lotteryServiceImpl {
-	return &lotteryServiceImpl{repo: repo, winRecordRepo: winRecordRepo, strategyFact: strategyFact, uow: uow}
+func NewLotteryServiceImpl(
+	repo domain.LotteryRepository,
+	winRecordRepo domain.WinRecordRepository,
+	strategyFact *strategy.LotteryStrategyFactory,
+	uow domain.UnitOfWork, eventbus eventbus.Producer) *lotteryServiceImpl {
+	return &lotteryServiceImpl{repo: repo, winRecordRepo: winRecordRepo, strategyFact: strategyFact, uow: uow, eventbus: eventbus}
 }
 
 const (
@@ -151,6 +160,14 @@ func (s *lotteryServiceImpl) Draw(ctx context.Context, req *DrawRequest) (*DrawR
 		return nil, err
 	}
 
+	if err := s.eventbus.Send(ctx, []byte("hello!!!")); err != nil {
+		logger.Ctx(ctx).Err(err).Msg("eventbusSendError")
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
 	return drawResp, nil
 }
 
@@ -178,4 +195,13 @@ func (s *lotteryServiceImpl) IncreaseStock(ctx context.Context, req *StockAction
 
 func (s *lotteryServiceImpl) GetLotteryInstance(ctx context.Context, instanceID string) (*LotteryInstanceResponse, error) {
 	return nil, nil
+}
+
+func (s *lotteryServiceImpl) HandleMessage(ctx context.Context, msg *eventbus.Message) error {
+	logger.Ctx(ctx).Info().
+		Str("topic", msg.Topic).
+		Str("group", msg.Group).
+		Str("body", string(msg.Body)).
+		Msg("HandleMessage")
+	return nil
 }
