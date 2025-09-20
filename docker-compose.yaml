@@ -6,7 +6,7 @@ services:
       STORE_DRIVER: mysql
       STORE_HOST: host.docker.internal
       STORE_USER: root
-      STORE_PASSWORD: 'root'
+      STORE_PASSWORD: '123456'
       STORE_PORT: 3306
     ports:
       - '36789:36789'

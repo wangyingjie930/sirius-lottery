@@ -9,7 +9,7 @@ infra:
   zookeeper:
     addrs: "localhost:2181"
   mysql:
-    addrs: "root:123456@tcp(localhost:3306)/sirius?charset=utf8mb4&parseTime=True&loc=Local"
+    addrs: "root:123456@tcp(127.0.0.1:3306)/sirius?charset=utf8mb4&parseTime=True&loc=Local"
 
 app:
   orderService:

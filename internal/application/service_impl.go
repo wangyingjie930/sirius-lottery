@@ -5,16 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/go-resty/resty/v2"
+	"github.com/google/uuid"
 	"sirius-lottery/internal/domain"
 	"sirius-lottery/internal/domain/entity"
+	"sirius-lottery/internal/domain/port"
 	"sirius-lottery/internal/domain/strategy"
 	"sirius-lottery/internal/infrastructure/contract/eventbus"
 
-	"github.com/google/uuid"
 	"github.com/wangyingjie930/nexus-pkg/logger"
-	"github.com/wangyingjie930/nexus-pkg/transactional"
-
 	"time"
 
 	"github.com/dtm-labs/client/dtmcli"
@@ -26,21 +24,21 @@ type lotteryServiceImpl struct {
 	strategyFact  *strategy.LotteryStrategyFactory
 	uow           domain.UnitOfWork
 	eventbus      eventbus.Producer
+
+	assetSrv port.AssetsService
+	stockSrv port.StockService
 }
 
 func NewLotteryServiceImpl(
 	repo domain.LotteryRepository,
 	winRecordRepo domain.WinRecordRepository,
 	strategyFact *strategy.LotteryStrategyFactory,
-	uow domain.UnitOfWork, eventbus eventbus.Producer) *lotteryServiceImpl {
-	return &lotteryServiceImpl{repo: repo, winRecordRepo: winRecordRepo, strategyFact: strategyFact, uow: uow, eventbus: eventbus}
+	uow domain.UnitOfWork, eventbus eventbus.Producer, assetSrv port.AssetsService, stockSrv port.StockService) *lotteryServiceImpl {
+	return &lotteryServiceImpl{repo: repo, winRecordRepo: winRecordRepo, strategyFact: strategyFact, uow: uow, eventbus: eventbus, assetSrv: assetSrv, stockSrv: stockSrv}
 }
 
 const (
-	DtmServer         = "http://localhost:36789/api/dtmsvr"
-	AssetsServiceURL  = "http://localhost:8080/api/v2/lottery/dtm"
-	LotteryServiceURL = "http://localhost:8080/api/v2/lottery/dtm"
-	LocalHost         = "http://host.docker.internal:8080/api/v2/lottery/dtm"
+	DtmServer = "http://localhost:36789/api/dtmsvr"
 )
 
 // Draw 实现了核心抽奖逻辑
@@ -73,99 +71,60 @@ func (s *lotteryServiceImpl) Draw(ctx context.Context, req *DrawRequest) (*DrawR
 
 	gid := dtmcli.MustGenGid(DtmServer)
 	var drawResp *DrawResponse
-	err = dtmcli.TccGlobalTransaction(DtmServer, gid, func(tcc *dtmcli.Tcc) (*resty.Response, error) {
-		resp, err := tcc.CallBranch(AssetRequest{Cost: cost, UserId: userID}, AssetsServiceURL+"/asset/try", LocalHost+"/asset/confirm", LocalHost+"/asset/cancel")
-		if err != nil {
-			return resp, err
-		}
 
-		pool := instance.Pools[0]
-		strategy, err := s.strategyFact.GetStrategy(pool.LotteryStrategy)
-		if err != nil {
-			return nil, fmt.Errorf("抽奖策略加载失败: %w", err)
-		}
-
-		drawCtx := &domain.DrawContext{
-			InstanceID: instance.InstanceID,
-			UserID:     userID,
-			Pool:       &pool,
-			Prizes:     pool.Prizes,
-		}
-		wonPrize, err := strategy.Draw(ctx, drawCtx)
-		if err != nil {
-			return nil, fmt.Errorf("抽奖执行失败: %w", err)
-		}
-
-		if wonPrize.IsSpecial {
-			drawResp = &DrawResponse{
-				OrderID: "THANK_YOU_ORDER", // 可以给一个特殊订单号
-				PrizeID: wonPrize.PrizeID,
-				IsWin:   false,
-			}
-			return nil, nil
-		}
-
+	saga := dtmcli.NewSaga(DtmServer, gid)
+	saga.Add(s.assetSrv.ActionName(), s.assetSrv.ComponentName(), AssetRequest{Cost: cost, UserId: userID})
+	pool := instance.Pools[0]
+	strategy, err := s.strategyFact.GetStrategy(pool.LotteryStrategy)
+	if err != nil {
+		return nil, fmt.Errorf("抽奖策略加载失败: %w", err)
+	}
+	drawCtx := &domain.DrawContext{
+		InstanceID: instance.InstanceID,
+		UserID:     userID,
+		Pool:       &pool,
+		Prizes:     pool.Prizes,
+	}
+	wonPrize, err := strategy.Draw(ctx, drawCtx)
+	if err != nil {
+		return nil, fmt.Errorf("抽奖执行失败: %w", err)
+	}
+	if wonPrize.IsSpecial {
 		drawResp = &DrawResponse{
-			OrderID: uuid.New().String(),
+			OrderID: "THANK_YOU_ORDER", // 可以给一个特殊订单号
 			PrizeID: wonPrize.PrizeID,
-			IsWin:   !wonPrize.IsSpecial,
+			IsWin:   false,
 		}
-
-		resp, err = tcc.CallBranch(StockActionRequest{
-			InstanceID: instance.InstanceID,
-			PrizeID:    wonPrize.PrizeID,
-			Num:        1,
-		}, LotteryServiceURL+"/stock/try", LocalHost+"/stock/confirm", LocalHost+"/stock/cancel")
-		if err != nil {
-			return resp, err
-		}
-
-		err = s.uow.Execute(ctx, func(repoProvider domain.RepositoryProvider) error {
-			// 1. 创建中奖记录
-			winRecord := &entity.LotteryWinRecord{
-				OrderID:    drawResp.OrderID,
-				RequestID:  req.RequestID,
-				InstanceID: req.InstanceID,
-				UserID:     uint64(userID),
-				PrizeID:    drawResp.PrizeID,
-				Status:     entity.WinRecordStatusPending,
-			}
-			if err := repoProvider.WinRecordRepository().Create(ctx, winRecord); err != nil {
-				return fmt.Errorf("创建中奖记录失败: %w", err)
-			}
-
-			// 2. 使用 Outbox 模式创建发奖消息
-			msgPayload, _ := json.Marshal(winRecord)
-			msg := &transactional.Message{
-				Topic:   "lottery_win_events",
-				Key:     uuid.New().String(),
-				Payload: msgPayload,
-				Status:  transactional.StatusPending,
-			}
-			if err := repoProvider.TransactionalStore().CreateInTx(ctx, msg); err != nil {
-				return fmt.Errorf("创建发奖消息失败: %w", err)
-			}
-
-			return nil
-		})
-
-		if err != nil {
-			return nil, err
-		}
-
 		return nil, nil
+	}
+	drawResp = &DrawResponse{
+		OrderID: uuid.New().String(),
+		PrizeID: wonPrize.PrizeID,
+		IsWin:   !wonPrize.IsSpecial,
+	}
+	saga.Add(s.stockSrv.ActionName(), s.stockSrv.ComponentName(), StockActionRequest{
+		InstanceID: instance.InstanceID,
+		PrizeID:    wonPrize.PrizeID,
+		Num:        1,
 	})
 
-	if err != nil {
+	saga.WithGlobalTransRequestTimeout(5000)
+	saga.WaitResult = true
+	if err = saga.Submit(); err != nil {
 		return nil, err
 	}
 
-	if err := s.eventbus.Send(ctx, []byte("hello!!!")); err != nil {
+	record := &entity.LotteryWinRecord{
+		OrderID:    drawResp.OrderID,
+		RequestID:  req.RequestID,
+		InstanceID: req.InstanceID,
+		UserID:     uint64(userID),
+		PrizeID:    drawResp.PrizeID,
+		Status:     entity.WinRecordStatusPending,
+	}
+	body, _ := json.Marshal(record)
+	if err := s.eventbus.Send(ctx, body); err != nil {
 		logger.Ctx(ctx).Err(err).Msg("eventbusSendError")
-	}
-
-	if err != nil {
-		return nil, err
 	}
 
 	return drawResp, nil
@@ -203,5 +162,36 @@ func (s *lotteryServiceImpl) HandleMessage(ctx context.Context, msg *eventbus.Me
 		Str("group", msg.Group).
 		Str("body", string(msg.Body)).
 		Msg("HandleMessage")
+
+	var winRecord entity.LotteryWinRecord
+	json.Unmarshal(msg.Body, &winRecord)
+
+	order, _ := s.winRecordRepo.GetByRequestID(ctx, winRecord.OrderID)
+	if order == nil {
+		if err := s.winRecordRepo.Create(ctx, &winRecord); err != nil {
+			return fmt.Errorf("创建中奖记录失败: %w", err)
+		}
+	}
+
+	err := s.stockSrv.ConfirmDeduct(ctx, port.StockActionRequest{
+		InstanceID: winRecord.InstanceID,
+		PrizeID:    winRecord.PrizeID,
+		Num:        1,
+	})
+	logger.Ctx(ctx).Info().Msg("call stock confirm....")
+	if err != nil {
+		return err
+	}
+
+	err = s.assetSrv.ConfirmDeduct(ctx, port.StockActionRequest{
+		InstanceID: winRecord.InstanceID,
+		PrizeID:    winRecord.PrizeID,
+		Num:        1,
+	})
+	logger.Ctx(ctx).Info().Msg("call asset confirm....")
+	if err != nil {
+		return err
+	}
+
 	return nil
 }

@@ -4,13 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/dtm-labs/client/dtmcli"
-	"github.com/wangyingjie930/nexus-pkg/logger"
 	"net/http"
 	"sirius-lottery/internal/application"
+	port2 "sirius-lottery/internal/domain/port"
+	"sirius-lottery/internal/infrastructure/port"
 )
 
 type HttpHandler struct {
 	lotteryService application.LotteryService
+
+	assetSrv port.AssetSrv
+	stockSrv port.StockSrv
 }
 
 func NewHttpHandler(lotteryService application.LotteryService) *HttpHandler {
@@ -91,64 +95,84 @@ func writeDtmResponse(w http.ResponseWriter, err error) {
 func (h *HttpHandler) StockDeductTry(w http.ResponseWriter, r *http.Request) {
 	// Try 阶段通常只做资源检查和预留，这里我们简化处理，直接返回成功
 	// 在实际项目中，这里可以检查库存是否可能足够
-	logger.Ctx(r.Context()).Println("✅ StockDeductTry")
+	var req port2.StockActionRequest
+	json.NewDecoder(r.Body).Decode(&req)
+	h.stockSrv.TryDeduct(r.Context(), req)
+
 	writeDtmResponse(w, nil)
 }
 
 func (h *HttpHandler) StockDeductConfirm(w http.ResponseWriter, r *http.Request) {
-	logger.Ctx(r.Context()).Println("✅ StockDeductConfirm")
+	//logger.Ctx(r.Context()).Println("✅ StockDeductConfirm")
+	//
+	//var req application.StockActionRequest
+	//if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	//	logger.Ctx(r.Context()).Err(err).Send()
+	//	// 请求体解析失败是系统问题，返回错误让 DTM 重试
+	//	http.Error(w, err.Error(), http.StatusBadRequest)
+	//	return
+	//}
+	//
+	//// 调用业务逻辑
+	//err := h.lotteryService.DeductStock(r.Context(), &req)
+	//logger.Ctx(r.Context()).Err(err).Send()
 
-	var req application.StockActionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		logger.Ctx(r.Context()).Err(err).Send()
-		// 请求体解析失败是系统问题，返回错误让 DTM 重试
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// 调用业务逻辑
-	err := h.lotteryService.DeductStock(r.Context(), &req)
-	logger.Ctx(r.Context()).Err(err).Send()
+	var req port2.StockActionRequest
+	json.NewDecoder(r.Body).Decode(&req)
+	h.stockSrv.ConfirmDeduct(r.Context(), req)
 
 	// 使用统一的响应函数
-	writeDtmResponse(w, err)
+	writeDtmResponse(w, nil)
 }
 
 func (h *HttpHandler) StockDeductCancel(w http.ResponseWriter, r *http.Request) {
-	logger.Ctx(r.Context()).Println("✅ StockDeductCancel")
+	//logger.Ctx(r.Context()).Println("✅ StockDeductCancel")
+	//
+	//var req application.StockActionRequest
+	//if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	//	http.Error(w, err.Error(), http.StatusBadRequest)
+	//	return
+	//}
+	//
+	//// 调用业务逻辑
+	//err := h.lotteryService.IncreaseStock(r.Context(), &req)
+	//
+	//// Cancel 阶段必须成功，即使业务逻辑出错，也要返回成功给 DTM
+	//// 但需要记录严重错误日志以进行人工干预
+	//if err != nil {
+	//	logger.Ctx(r.Context()).Err(err).Msg("CRITICAL: StockDeductCancel failed, manual intervention required.")
+	//}
 
-	var req application.StockActionRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// 调用业务逻辑
-	err := h.lotteryService.IncreaseStock(r.Context(), &req)
-
-	// Cancel 阶段必须成功，即使业务逻辑出错，也要返回成功给 DTM
-	// 但需要记录严重错误日志以进行人工干预
-	if err != nil {
-		logger.Ctx(r.Context()).Err(err).Msg("CRITICAL: StockDeductCancel failed, manual intervention required.")
-	}
+	var req port2.StockActionRequest
+	json.NewDecoder(r.Body).Decode(&req)
+	h.stockSrv.CancelDeduct(r.Context(), req)
 
 	writeDtmResponse(w, nil) // 始终向 DTM 返回成功
 }
 
 func (h *HttpHandler) AssetTry(w http.ResponseWriter, r *http.Request) {
-	logger.Ctx(r.Context()).Println("✅ AssetTry")
+	var req port2.StockActionRequest
+	json.NewDecoder(r.Body).Decode(&req)
+	h.assetSrv.TryDeduct(r.Context(), req)
+
 	// 假设资产检查成功
 	writeDtmResponse(w, nil)
 }
 
 func (h *HttpHandler) AssetConfirm(w http.ResponseWriter, r *http.Request) {
-	logger.Ctx(r.Context()).Println("✅ AssetConfirm")
+	var req port2.StockActionRequest
+	json.NewDecoder(r.Body).Decode(&req)
+	h.assetSrv.ConfirmDeduct(r.Context(), req)
+
 	// 假设资产扣减成功
 	writeDtmResponse(w, nil)
 }
 
 func (h *HttpHandler) AssetCancel(w http.ResponseWriter, r *http.Request) {
-	logger.Ctx(r.Context()).Println("✅ AssetCancel")
+	var req port2.StockActionRequest
+	json.NewDecoder(r.Body).Decode(&req)
+	h.assetSrv.CancelDeduct(r.Context(), req)
+
 	// 假设资产返还成功
 	writeDtmResponse(w, nil)
 }

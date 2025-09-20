@@ -7,6 +7,7 @@ import (
 	strategy2 "sirius-lottery/internal/domain/strategy"
 	"sirius-lottery/internal/infrastructure"
 	"sirius-lottery/internal/infrastructure/eventbus"
+	"sirius-lottery/internal/infrastructure/port"
 	redis2 "sirius-lottery/internal/infrastructure/redis"
 	"sirius-lottery/internal/infrastructure/repository"
 )
@@ -27,7 +28,10 @@ func Init(ctx context.Context) (err error) {
 	strategy := strategy2.NewLotteryStrategyFactory(gp)
 	uow := infrastructure.NewGormUnitOfWork(dept.DB)
 
-	l := application.NewLotteryServiceImpl(lrp, wrp, strategy, uow, dept.AppEventbus)
+	assetSrv := port.NewAssetSrv()
+	stockSrv := port.NewStockSrv()
+
+	l := application.NewLotteryServiceImpl(lrp, wrp, strategy, uow, dept.AppEventbus, assetSrv, stockSrv)
 	config := bootstrap.GetCurrentConfig()
 	if err = eventbus.NewConsumerService().RegisterConsumer(config.Infra.Kafka.Brokers, "sirius-lottery", "sirius-lottery", l); err != nil {
 		return err
